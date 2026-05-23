@@ -17,6 +17,8 @@ void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, i
 void init_sceen(char *vram, int xsize, int ysize);												// 绘制桌面：浅蓝背景 + 底部灰色任务栏 + 左右两个按钮（对应原作者 init_screen）
 void putfont8(char *vram, int xsize, int x, int y, char c, char *font);							// 在指定坐标绘制一个 8×16 的等宽字符
 void putfonts8_asc(char *vram, int xsize, int x, int y, char c, unsigned char *s);				// 在指定坐标绘制一个以 0x00 结尾的字符串（每字符 8×16 点阵）
+void init_mouse_cursor8(char *mouse, char bc);														// 准备鼠标指针图案（16×16 点阵），参数: 鼠标图案数组, 背景色
+void putblock8_8(char *vram, int xsize, int pxsize, int pysize, int px0, int py0, char *buf, int bxsize); // 在显存的指定位置绘制一个图块（鼠标指针）
 
 // ============================================================
 // 颜色号宏 —— 给调色板编号起个有意义的名字，方便代码中使用
@@ -72,6 +74,17 @@ void HariMain(void)
 	init_palette();																// ① 设定调色板（16 种颜色）
 	init_sceen(binfo->vram, binfo->scrnx, binfo->scrny);						// ② 绘制桌面背景 + 任务栏 + 按钮
 	putfonts8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF,"hello world");		// ③ 在屏幕左上角显示字符串
+
+	// 显示变量
+	char s[40];
+	sprintf(s, "scrnx=%d", binfo->scrnx);
+	putfonts8_asc(binfo->vram, binfo->scrnx, 16, 64, COL8_FFFFFF, s);
+
+	// 显示鼠标指针（16×16 图案，坐标 (80,80) 约在屏幕中央）
+	char mcursor[256];															// 鼠标图案缓冲区（= 16×16 像素）
+	int mx = 80, my = 80;														// 鼠标初始坐标
+	init_mouse_cursor8(mcursor, COL8_008484);									// ④ 准备鼠标形状（背景色=桌面色→透明效果）
+	putblock8_8(binfo->vram, binfo->scrnx, 16, 16, mx, my, mcursor, 16);		// ⑤ 把鼠标画到显存
 
 	for (;;)
 	{ // ④ 主循环：空闲即停机，由硬件中断唤醒
@@ -289,6 +302,73 @@ void putfonts8_asc(char *vram, int xsize, int x, int y, char c, unsigned char *s
 	{
 		putfont8(vram, xsize, x, y, c, hankaku + *s * 16); // 取当前字符的点阵数据绘制
 		x += 8; // 一个字符占 8 像素宽，x 坐标右移，为下一个字符留位置
+	}
+	return;
+}
+
+// ============================================================
+// init_mouse_cursor8 — 生成 16×16 鼠标指针点阵图案
+// 参数: mouse = 输出缓冲区（256 字节，16×16 像素各 1 字节颜色号）
+//       bc    = 背景色（与桌面背景相同，实现"透明"效果）
+//
+// 图案编码（ASCII 艺术）：
+//   '*' → 黑色 (COL8_000000) — 鼠标轮廓、外框
+//   'O' → 白色 (COL8_FFFFFF) — 鼠标内部填充
+//   '.' → 背景色 (bc)        — 透明区域
+// ============================================================
+void init_mouse_cursor8(char *mouse, char bc)
+{
+	static char cursor[16][16] = {
+		"**************..",
+		"*OOOOOOOOOOO*...",
+		"*OOOOOOOOOO*....",
+		"*OOOOOOOOO*.....",
+		"*OOOOOOOO*......",
+		"*OOOOOOO*.......",
+		"*OOOOOOO*.......",
+		"*OOOOOOOO*......",
+		"*OOOO**OOO*.....",
+		"*OOO*..*OOO*....",
+		"*OO*....*OOO*...",
+		"*O*......*OOO*..",
+		"**........*OOO*.",
+		"*..........*OOO*",
+		"............*OO*",
+		".............***"};
+	int x, y;
+	for (y = 0; y < 16; y++)
+	{
+		for (x = 0; x < 16; x++)
+		{
+			if (cursor[y][x] == '*')
+				mouse[y * 16 + x] = COL8_000000;
+			if (cursor[y][x] == 'O')
+				mouse[y * 16 + x] = COL8_FFFFFF;
+			if (cursor[y][x] == '.')
+				mouse[y * 16 + x] = bc;
+		}
+	}
+	return;
+}
+
+// ============================================================
+// putblock8_8 — 将一块矩形图案（如鼠标指针）拷贝到显存指定位置
+// 参数: vram   = 显存基址
+//       vxsize = 屏幕一行像素数
+//       pxsize = 图块宽度, pysize = 图块高度
+//       px0    = 目标左上角 X, py0 = 目标左上角 Y
+//       buf    = 图案缓冲区
+//       bxsize = 缓冲区一行像素数
+// ============================================================
+void putblock8_8(char *vram, int vxsize, int pxsize, int pysize, int px0, int py0, char *buf, int bxsize)
+{
+	int x, y;
+	for (y = 0; y < pysize; y++)
+	{
+		for (x = 0; x < pxsize; x++)
+		{
+			vram[(py0 + y) * vxsize + (px0 + x)] = buf[y * bxsize + x];
+		}
 	}
 	return;
 }
