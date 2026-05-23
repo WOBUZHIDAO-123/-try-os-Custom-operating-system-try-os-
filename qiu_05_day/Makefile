@@ -1,18 +1,25 @@
 # ============================================================
-# Makefile — haribote 操作系统构建脚本
+# Makefile — haribote 操作系统构建脚本（第5天）
 # 定义工具链路径、编译规则和便捷命令
 # ============================================================
 
-# 工具链路径
+# ---------- 工具链路径 ----------
 TOOLPATH = ../z_tools/
 INCPATH  = ../z_tools/haribote/
 
-# 工具宏定义（简化命令行调用）
+# ---------- 工具宏定义（简化命令行调用） ----------
 MAKE     = $(TOOLPATH)make.exe -r     # make 工具自身
 NASK     = $(TOOLPATH)nask.exe        # 汇编器（NASM 风格）
 CC1      = $(TOOLPATH)cc1.exe -I$(INCPATH) -Os -Wall -quiet  # C 编译器
 GAS2NASK = $(TOOLPATH)gas2nask.exe -a # GNU 汇编 → NASM 格式转换器
 OBJ2BIM  = $(TOOLPATH)obj2bim.exe     # 目标文件 → BIM 链接器
+# ═══════════════════════════════════════════════════════════════
+# 【新增】字库处理工具（第5天加入）
+# MAKEFONT — 将 hankaku.txt 点阵文本编译为二进制字体文件
+# BIN2OBJ  — 将二进制字体文件转换为 .obj 格式，导出符号 _hankaku
+# ═══════════════════════════════════════════════════════════════
+MAKEFONT = $(TOOLPATH)makefont.exe    # 字库点阵 → 二进制字体文件
+BIN2OBJ  = $(TOOLPATH)bin2obj.exe     # 二进制文件 → 目标文件(.obj)
 BIM2HRB  = $(TOOLPATH)bim2hrb.exe     # BIM → HRB 格式转换器
 RULEFILE = $(TOOLPATH)haribote/haribote.rul  # 链接规则文件
 EDIMG    = $(TOOLPATH)edimg.exe        # 磁盘映像制作工具
@@ -43,35 +50,47 @@ asmhead.bin : asmhead.nas Makefile
 bootpack.gas : bootpack.c Makefile
 	$(CC1) -o bootpack.gas bootpack.c
 
-# 将 GNU 汇编格式转换为本工具链可用的 NASM 格式
+# GNU 汇编 → 本工具链可用的 NASM 格式
 bootpack.nas : bootpack.gas Makefile
 	$(GAS2NASK) bootpack.gas bootpack.nas
 
-# 汇编转换后的 .nas → 生成目标文件 .obj
+# NASM 汇编 → 目标文件 .obj
 bootpack.obj : bootpack.nas Makefile
 	$(NASK) bootpack.nas bootpack.obj bootpack.lst
 
-# 汇编手写的汇编函数（naskfunc.nas）→ 生成目标文件 .obj
+# 手写汇编函数（naskfunc.nas）→ 目标文件 .obj
 naskfunc.obj : naskfunc.nas Makefile
 	$(NASK) naskfunc.nas naskfunc.obj naskfunc.lst
 
-# 链接所有 .obj 文件 → 生成 BIM 格式可执行文件
-# 栈大小 3136KB（3MB + 64KB），同时输出链接映射文件
-bootpack.bim : bootpack.obj naskfunc.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
-		bootpack.obj naskfunc.obj
+# ═══════════════════════════════════════════════════════════════
+# 【新增】字库生成规则（第5天加入）
+# hankaku.txt 包含 256 个字符的 8×16 点阵描述
+# → 先转为二进制字库 → 再转为 .obj 供 C 代码 extern 引用
+# ═══════════════════════════════════════════════════════════════
+hankaku.bin : ../hankaku.txt Makefile
+	$(MAKEFONT) ../hankaku.txt hankaku.bin
 
-# BIM → HRB（haribute 专用可执行格式），加载基址偏移 0
+hankaku.obj : hankaku.bin Makefile
+	$(BIN2OBJ) hankaku.bin hankaku.obj _hankaku
+
+# ═══════════════════════════════════════════════════════════════
+# 【修改】链接规则（第5天加入 hankaku.obj）
+# 之前只有 bootpack.obj + naskfunc.obj，缺少 hankaku.obj
+# 导致链接报错 "can't link _hankaku"
+# ═══════════════════════════════════════════════════════════════
+bootpack.bim : bootpack.obj naskfunc.obj hankaku.obj Makefile
+	$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
+		bootpack.obj naskfunc.obj hankaku.obj
+
+# BIM → HRB 格式（haribote 专用，加载基址偏移 0）
 bootpack.hrb : bootpack.bim Makefile
 	$(BIM2HRB) bootpack.bim bootpack.hrb 0
 
-# 将 asmhead.bin 和 bootpack.hrb 合并为系统文件
-# /B 以二进制模式合并，asmhead 作为头部，bootpack.hrb 作为后续
+# 合并 asmhead.bin + bootpack.hrb → 系统文件（二进制拼接）
 haribote.sys : asmhead.bin bootpack.hrb Makefile
 	copy /B asmhead.bin+bootpack.hrb haribote.sys
 
-# 制作 FAT12 格式软盘映像
-# 使用模板 fdimg0at.tek，将 ipl10.bin 写入 0 扇区，再复制 sys 文件进去
+# 制作 FAT12 软盘映像：写入引导扇区 + 复制系统文件
 haribote.img : ipl10.bin haribote.sys Makefile
 	$(EDIMG)   imgin:../z_tools/fdimg0at.tek \
 		wbinimg src:ipl10.bin len:512 from:0 to:0 \
@@ -86,18 +105,18 @@ haribote.img : ipl10.bin haribote.sys Makefile
 img :
 	$(MAKE) haribote.img
 
-# 生成映像并在 QEMU 虚拟机中运行
+# 生成映像 → 复制到 QEMU → 启动虚拟机
 run :
 	$(MAKE) img
 	$(COPY) haribote.img ..\z_tools\qemu\fdimage0.bin
 	$(MAKE) -C ../z_tools/qemu
 
-# 生成映像并写入真实软盘（A: 盘）
+# 生成映像 → 写入真实软盘（需软驱 A:）
 install :
 	$(MAKE) img
 	$(IMGTOL) w a: haribote.img
 
-# 清理编译中间产物（保留最终映像 haribote.img）
+# 清理编译中间产物（保留 haribote.img）
 clean :
 	-$(DEL) *.bin
 	-$(DEL) *.lst
@@ -109,7 +128,7 @@ clean :
 	-$(DEL) bootpack.hrb
 	-$(DEL) haribote.sys
 
-# 彻底清理（包括最终映像）
+# 全清理（包括最终映像）
 src_only :
 	$(MAKE) clean
 	-$(DEL) haribote.img

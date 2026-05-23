@@ -2,20 +2,20 @@
 // ============================================================
 // I/O 底层函数声明（实现在 naskfunc.nas 中，C 语言无法直接操作硬件端口）
 // ============================================================
-void io_hlt(void);                // 执行 HLT 指令，CPU 进入停机状态，等待下一次中断唤醒
-void io_cli(void);                // 执行 CLI 指令，清除 EFLAGS 的 IF 位，禁止可屏蔽中断
+void io_hlt(void);				  // 执行 HLT 指令，CPU 进入停机状态，等待下一次中断唤醒
+void io_cli(void);				  // 执行 CLI 指令，清除 EFLAGS 的 IF 位，禁止可屏蔽中断
 void io_out8(int port, int data); // 执行 OUT 指令，向指定 I/O 端口写入 1 字节数据
-int io_load_eflags(void);         // 执行 PUSHF+POP EAX，读取当前 EFLAGS 寄存器值并返回
+int io_load_eflags(void);		  // 执行 PUSHF+POP EAX，读取当前 EFLAGS 寄存器值并返回
 void io_store_eflags(int eflags); // 执行 PUSH EAX+POPF，将给定值写入 EFLAGS 寄存器
 
 // ============================================================
 // 本地函数前置声明（在文件末尾定义，此处声明避免编译警告）
 // ============================================================
-void init_palette(void);  // 初始化前 16 色的调色板
-void set_palette(int start, int end, unsigned char *rgb);// ↑ 向 VGA 硬件写入调色板数据，参数: 起始色号, 结束色号, RGB 数组指针(每色 3 字节)
-void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1);// ↑ 在显存中填充矩形区域
-void init_sceen(char *vram, int xsize, int ysize);// ↑ 绘制桌面：浅蓝背景 + 底部灰色任务栏 + 左右两个按钮（对应原作者 init_screen）
-void putfont8(char *vram, int xsize, int x, int y, char c, char *font);// ↑ 在指定坐标绘制一个 8×16 的等宽字符
+void init_palette(void);																		// 初始化前 16 色的调色板
+void set_palette(int start, int end, unsigned char *rgb);										// ↑ 向 VGA 硬件写入调色板数据，参数: 起始色号, 结束色号, RGB 数组指针(每色 3 字节)
+void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1); // ↑ 在显存中填充矩形区域
+void init_sceen(char *vram, int xsize, int ysize);												// ↑ 绘制桌面：浅蓝背景 + 底部灰色任务栏 + 左右两个按钮（对应原作者 init_screen）
+void putfont8(char *vram, int xsize, int x, int y, char c, char *font);							// ↑ 在指定坐标绘制一个 8×16 的等宽字符
 
 // ============================================================
 // 颜色号宏 —— 给调色板编号起个有意义的名字，方便代码中使用
@@ -60,16 +60,6 @@ struct BOOTINFO
 };
 
 // ============================================================
-// 字符'A'的 8×16 点阵字体数据
-// 每个字节对应字符的一行像素（共 16 行），bit7=最左列, bit0=最右列
-// 例如 0x18 = 00011000? → 第 4、5 列亮，其余暗（构成 A 的左右竖笔）
-// ============================================================
-static char font_A[16] = {
-	0x00, 0x18, 0x18, 0x18, 0x18, 0x24, 0x24, 0x24,
-	0x24, 0x7e, 0x42, 0x42, 0x42, 0xe7, 0x00, 0x00};
-
-
-// ============================================================
 // 内核主函数 —— 由 asmhead.nas 跳转至此（已处于 32 位保护模式）
 // ============================================================
 void HariMain(void)
@@ -78,11 +68,19 @@ void HariMain(void)
 	// 只需记住一个基址 0x0ff0，成员偏移由编译器自动计算
 	struct BOOTINFO *binfo = (struct BOOTINFO *)0x0ff0;
 
-	init_palette();                                        // ① 设定调色板（16 种颜色）
-	init_sceen(binfo->vram, binfo->scrnx, binfo->scrny);   // ② 绘制桌面背景 + 任务栏 + 按钮
-	putfont8(binfo->vram, binfo->scrnx, 8, 8, COL8_FFFFFF, font_A); // ③ 在 (8,8) 显示白色 A
+	extern char hankaku[4096]; // 外部定义的 4096 字节点阵数据（256 字 × 16 行）
 
-	for (;;) {      // ④ 主循环：空闲即停机，由硬件中断唤醒
+	init_palette();																// ① 设定调色板（16 种颜色）
+	init_sceen(binfo->vram, binfo->scrnx, binfo->scrny);						// ② 绘制桌面背景 + 任务栏 + 按钮
+	putfont8(binfo->vram, binfo->scrnx, 8, 8, COL8_FFFFFF, hankaku + 'A' * 16); // ③ 在 (8,8) 坐标绘制 'A' 字，颜色为白色（7），hankaku+'A'*16 计算 'A' 字的点阵数据地址
+	putfont8(binfo->vram, binfo->scrnx, 16, 8, COL8_FFFFFF, hankaku + 'B' * 16);
+	putfont8(binfo->vram, binfo->scrnx, 24, 8, COL8_FFFFFF, hankaku + 'C' * 16);
+	putfont8(binfo->vram, binfo->scrnx, 40, 8, COL8_FFFFFF, hankaku + '1' * 16);
+	putfont8(binfo->vram, binfo->scrnx, 48, 8, COL8_FFFFFF, hankaku + '2' * 16);
+	putfont8(binfo->vram, binfo->scrnx, 56, 8, COL8_FFFFFF, hankaku + '3' * 16);
+
+	for (;;)
+	{ // ④ 主循环：空闲即停机，由硬件中断唤醒
 		io_hlt();
 	}
 }
@@ -94,25 +92,26 @@ void HariMain(void)
 // ============================================================
 void init_palette(void)
 {
-	static unsigned char table_rgb[16 * 3] = {   // 16 色 × 3 分量(R,G,B)
-		0x00, 0x00, 0x00,   //  0: 黑     (  0,   0,   0)
-		0xff, 0x00, 0x00,   //  1: 亮红   (255,   0,   0)
-		0x00, 0xff, 0x00,   //  2: 亮绿   (  0, 255,   0)
-		0xff, 0xff, 0x00,   //  3: 亮黄   (255, 255,   0)
-		0x00, 0x00, 0xff,   //  4: 亮蓝   (  0,   0, 255)
-		0xff, 0x00, 0xff,   //  5: 亮紫   (255,   0, 255)
-		0x00, 0xff, 0xff,   //  6: 浅亮蓝 (  0, 255, 255)
-		0xff, 0xff, 0xff,   //  7: 白     (255, 255, 255)
-		0xc6, 0xc6, 0xc6,   //  8: 亮灰   (198, 198, 198)
-		0x84, 0x00, 0x00,   //  9: 暗红   (132,   0,   0)
-		0x00, 0x84, 0x00,   // 10: 暗绿   (  0, 132,   0)
-		0x84, 0x84, 0x00,   // 11: 暗黄   (132, 132,   0)
-		0x00, 0x00, 0x84,   // 12: 暗蓝   (  0,   0, 132)
-		0x84, 0x00, 0x84,   // 13: 暗紫   (132,   0, 132)
-		0x00, 0x84, 0x84,   // 14: 暗浅蓝 (  0, 132, 132)
-		0x84, 0x84, 0x84    // 15: 暗灰   (132, 132, 132)
+	static unsigned char table_rgb[16 * 3] = {
+		// 16 色 × 3 分量(R,G,B)
+		0x00, 0x00, 0x00, //  0: 黑     (  0,   0,   0)
+		0xff, 0x00, 0x00, //  1: 亮红   (255,   0,   0)
+		0x00, 0xff, 0x00, //  2: 亮绿   (  0, 255,   0)
+		0xff, 0xff, 0x00, //  3: 亮黄   (255, 255,   0)
+		0x00, 0x00, 0xff, //  4: 亮蓝   (  0,   0, 255)
+		0xff, 0x00, 0xff, //  5: 亮紫   (255,   0, 255)
+		0x00, 0xff, 0xff, //  6: 浅亮蓝 (  0, 255, 255)
+		0xff, 0xff, 0xff, //  7: 白     (255, 255, 255)
+		0xc6, 0xc6, 0xc6, //  8: 亮灰   (198, 198, 198)
+		0x84, 0x00, 0x00, //  9: 暗红   (132,   0,   0)
+		0x00, 0x84, 0x00, // 10: 暗绿   (  0, 132,   0)
+		0x84, 0x84, 0x00, // 11: 暗黄   (132, 132,   0)
+		0x00, 0x00, 0x84, // 12: 暗蓝   (  0,   0, 132)
+		0x84, 0x00, 0x84, // 13: 暗紫   (132,   0, 132)
+		0x00, 0x84, 0x84, // 14: 暗浅蓝 (  0, 132, 132)
+		0x84, 0x84, 0x84  // 15: 暗灰   (132, 132, 132)
 	};
-	set_palette(0, 15, table_rgb);  // 将 0~15 号全部写入 VGA
+	set_palette(0, 15, table_rgb); // 将 0~15 号全部写入 VGA
 	return;
 }
 
@@ -128,18 +127,19 @@ void init_palette(void)
 void set_palette(int start, int end, unsigned char *rgb)
 {
 	int i, eflags;
-	eflags = io_load_eflags();   // 保存中断许可标志（可能之前已经开中断）
-	io_cli();                    // 关闭中断，保证调色板写入是原子操作
-	io_out8(0x03c8, start);      // 告诉 VGA："从编号 start 开始改写"
+	eflags = io_load_eflags(); // 保存中断许可标志（可能之前已经开中断）
+	io_cli();				   // 关闭中断，保证调色板写入是原子操作
+	io_out8(0x03c8, start);	   // 告诉 VGA："从编号 start 开始改写"
 
-	for (i = start; i <= end; i++) {
+	for (i = start; i <= end; i++)
+	{
 		// i 仅作循环计数；VGA 自己会递增内部编号，代码无需干预
-		io_out8(0x03c9, rgb[0] / 4);   // 写入当前编号的 R 分量
-		io_out8(0x03c9, rgb[1] / 4);   // 写入当前编号的 G 分量
-		io_out8(0x03c9, rgb[2] / 4);   // 写入当前编号的 B 分量（3 字节写完→编号+1）
-		rgb += 3;                      // 指针跳到下一个颜色的 RGB 数据
+		io_out8(0x03c9, rgb[0] / 4); // 写入当前编号的 R 分量
+		io_out8(0x03c9, rgb[1] / 4); // 写入当前编号的 G 分量
+		io_out8(0x03c9, rgb[2] / 4); // 写入当前编号的 B 分量（3 字节写完→编号+1）
+		rgb += 3;					 // 指针跳到下一个颜色的 RGB 数据
 	}
-	io_store_eflags(eflags);     // 恢复中断许可标志
+	io_store_eflags(eflags); // 恢复中断许可标志
 	return;
 }
 
@@ -154,14 +154,15 @@ void set_palette(int start, int end, unsigned char *rgb)
 void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1)
 {
 	int x, y;
-	for (y = y0; y <= y1; y++) {       // 逐行
-		for (x = x0; x <= x1; x++) {   // 逐列
-			vram[y * xsize + x] = c;   // 写入 1 字节颜色号
+	for (y = y0; y <= y1; y++)
+	{ // 逐行
+		for (x = x0; x <= x1; x++)
+		{							 // 逐列
+			vram[y * xsize + x] = c; // 写入 1 字节颜色号
 		}
 	}
 	return;
 }
-
 
 // ============================================================
 // init_sceen — 绘制桌面布局
@@ -185,12 +186,12 @@ void init_sceen(char *vram, int xsize, int ysize)
 	struct BOOTINFO *bootinfo;
 	// 从地址 0x0ff0 读取 asmhead.nas 写入的启动信息
 	bootinfo = (struct BOOTINFO *)0x0ff0;
-	xsize = bootinfo->scrnx;   // 屏幕宽 (320)
-	ysize = bootinfo->scrny;   // 屏幕高 (200)
-	vram  = bootinfo->vram;    // 显存地址 (0xA0000)
+	xsize = bootinfo->scrnx; // 屏幕宽 (320)
+	ysize = bootinfo->scrny; // 屏幕高 (200)
+	vram = bootinfo->vram;	 // 显存地址 (0xA0000)
 
 	// ---- 桌面背景 ----
-	boxfill8(vram, xsize, COL8_008484, 0, 0, xsize - 1, ysize - 29);          // 浅蓝背景
+	boxfill8(vram, xsize, COL8_008484, 0, 0, xsize - 1, ysize - 29); // 浅蓝背景
 
 	// ---- 三条分割线（把桌面和任务栏隔开） ----
 	boxfill8(vram, xsize, COL8_C6C6C6, 0, ysize - 28, xsize - 1, ysize - 28); // 线1: 灰色
@@ -198,22 +199,21 @@ void init_sceen(char *vram, int xsize, int ysize)
 	boxfill8(vram, xsize, COL8_C6C6C6, 0, ysize - 26, xsize - 1, ysize - 1);  // 线3: 灰色 → 任务栏底
 
 	// ---- 按钮1（左侧 "消る"） ----
-	boxfill8(vram, xsize, COL8_FFFFFF,  3,        ysize - 24, 59,        ysize - 24); // 上边: 白色高光
-	boxfill8(vram, xsize, COL8_FFFFFF,  2,        ysize - 24,  2,        ysize -  4); // 左边: 白色高光
-	boxfill8(vram, xsize, COL8_848484,  3,        ysize -  4, 59,        ysize -  4); // 下边: 灰色阴影
-	boxfill8(vram, xsize, COL8_848484, 59,        ysize - 23, 59,        ysize -  5); // 右边: 灰色阴影
-	boxfill8(vram, xsize, COL8_000000,  2,        ysize -  3, 59,        ysize -  3); // 内部: 黑色填充
-	boxfill8(vram, xsize, COL8_000000, 60,        ysize - 24, 60,        ysize -  3); // 右缝: 黑色填充
+	boxfill8(vram, xsize, COL8_FFFFFF, 3, ysize - 24, 59, ysize - 24); // 上边: 白色高光
+	boxfill8(vram, xsize, COL8_FFFFFF, 2, ysize - 24, 2, ysize - 4);   // 左边: 白色高光
+	boxfill8(vram, xsize, COL8_848484, 3, ysize - 4, 59, ysize - 4);   // 下边: 灰色阴影
+	boxfill8(vram, xsize, COL8_848484, 59, ysize - 23, 59, ysize - 5); // 右边: 灰色阴影
+	boxfill8(vram, xsize, COL8_000000, 2, ysize - 3, 59, ysize - 3);   // 内部: 黑色填充
+	boxfill8(vram, xsize, COL8_000000, 60, ysize - 24, 60, ysize - 3); // 右缝: 黑色填充
 
 	// ---- 按钮2（右侧） ----
 	// 坐标用 xsize-47 而非硬编码 273，这样换分辨率时自动贴右边缘
-	boxfill8(vram, xsize, COL8_848484, xsize - 47, ysize - 24, xsize -  4, ysize - 24); // 上边
-	boxfill8(vram, xsize, COL8_848484, xsize - 47, ysize - 23, xsize - 47, ysize -  4); // 左边
-	boxfill8(vram, xsize, COL8_FFFFFF, xsize - 47, ysize -  3, xsize -  4, ysize -  3); // 下边: 白色高光
-	boxfill8(vram, xsize, COL8_FFFFFF, xsize -  3, ysize - 24, xsize -  3, ysize -  3); // 右边: 白色高光
+	boxfill8(vram, xsize, COL8_848484, xsize - 47, ysize - 24, xsize - 4, ysize - 24); // 上边
+	boxfill8(vram, xsize, COL8_848484, xsize - 47, ysize - 23, xsize - 47, ysize - 4); // 左边
+	boxfill8(vram, xsize, COL8_FFFFFF, xsize - 47, ysize - 3, xsize - 4, ysize - 3);   // 下边: 白色高光
+	boxfill8(vram, xsize, COL8_FFFFFF, xsize - 3, ysize - 24, xsize - 3, ysize - 3);   // 右边: 白色高光
 	return;
 }
-
 
 // ============================================================
 // putfont8 — 在屏幕上绘制一个 8×16 的等宽字符
@@ -230,19 +230,44 @@ void init_sceen(char *vram, int xsize, int ysize)
 void putfont8(char *vram, int xsize, int x, int y, char c, char *font)
 {
 	int i;
-	char d, *p;                      // d=当前行点阵字节, p=当前行首像素地址
-	for (i = 0; i < 16; i++) {       // 16 行，每行 1 字节控制 8 列
-		p = vram + (y + i) * xsize + x;  // 预计算第 i 行首地址，(y+i) 在屏幕上垂直下移 i 行
-		d = font[i];                     // 取第 i 行的点阵数据
+	char d, *p; // d=当前行点阵字节, p=当前行首像素地址
+	for (i = 0; i < 16; i++)
+	{									// 16 行，每行 1 字节控制 8 列
+		p = vram + (y + i) * xsize + x; // 预计算第 i 行首地址，(y+i) 在屏幕上垂直下移 i 行
+		d = font[i];					// 取第 i 行的点阵数据
 		// 逐位检查：bit7→p[0](最左列) ... bit0→p[7](最右列)
-		if ((d & 0x80) != 0) { p[0] = c; }   // bit7=1 → 第1列亮
-		if ((d & 0x40) != 0) { p[1] = c; }   // bit6=1 → 第2列亮
-		if ((d & 0x20) != 0) { p[2] = c; }   // bit5=1 → 第3列亮
-		if ((d & 0x10) != 0) { p[3] = c; }   // bit4=1 → 第4列亮
-		if ((d & 0x08) != 0) { p[4] = c; }   // bit3=1 → 第5列亮
-		if ((d & 0x04) != 0) { p[5] = c; }   // bit2=1 → 第6列亮
-		if ((d & 0x02) != 0) { p[6] = c; }   // bit1=1 → 第7列亮
-		if ((d & 0x01) != 0) { p[7] = c; }   // bit0=1 → 第8列亮
+		if ((d & 0x80) != 0)
+		{
+			p[0] = c;
+		} // bit7=1 → 第1列亮
+		if ((d & 0x40) != 0)
+		{
+			p[1] = c;
+		} // bit6=1 → 第2列亮
+		if ((d & 0x20) != 0)
+		{
+			p[2] = c;
+		} // bit5=1 → 第3列亮
+		if ((d & 0x10) != 0)
+		{
+			p[3] = c;
+		} // bit4=1 → 第4列亮
+		if ((d & 0x08) != 0)
+		{
+			p[4] = c;
+		} // bit3=1 → 第5列亮
+		if ((d & 0x04) != 0)
+		{
+			p[5] = c;
+		} // bit2=1 → 第6列亮
+		if ((d & 0x02) != 0)
+		{
+			p[6] = c;
+		} // bit1=1 → 第7列亮
+		if ((d & 0x01) != 0)
+		{
+			p[7] = c;
+		} // bit0=1 → 第8列亮
 	}
 	return;
 }
